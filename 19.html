@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>particle art</title>
+  <style>
+    :root{
+      --scale:1;
+      --base:16px;
+      --ui-gap: calc(1rem * var(--scale));
+      --accent: #7c5cff;
+      --bg: linear-gradient(135deg,#0f172a,#071029);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui;background:var(--bg);color:#e6eef8}
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;gap:var(--ui-gap)}
+    .stage{width:clamp(260px,45vw,720px);height:clamp(360px,60vh,720px);border-radius:18px;overflow:hidden;position:relative;background:rgba(255,255,255,0.03);backdrop-filter:blur(6px);box-shadow:0 10px 40px rgba(2,6,23,0.7)}
+    canvas{display:block;width:100%;height:100%}
+    .panel{width:min(420px,42vw);padding:20px;background:rgba(255,255,255,0.05);border-radius:14px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    h1{margin:0 0 12px;font-size:1.4rem}
+    .controls{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+    .btn{padding:8px 12px;border-radius:10px;background:rgba(255,255,255,0.06);cursor:pointer;border:1px solid rgba(255,255,255,0.1)}
+    .btn.primary{background:linear-gradient(90deg,var(--accent),#48d1ff);color:#000}
+    @media(max-width:640px){.wrap{flex-direction:column}.panel{width:100%}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="stage" id="stage"><canvas id="c"></canvas></div>
+    <aside class="panel">
+      <h1>컨트롤</h1>
+      <div class="controls">
+        <button class="btn" id="regen">다시 생성</button>
+        <button class="btn primary" id="toggleGravity">중력</button>
+        <button class="btn" id="toggleColorMode">컬러모드</button>
+        <button class="btn" id="burst">폭발 효과</button>
+        <button class="btn" id="slowmo">슬로모션</button>
+        <button class="btn" id="megaBurst">메가버스트</button>
+        <button class="btn" id="spinMode">스핀 모드</button>
+        <button class="btn" id="bounceMode">바운스 모드</button>
+        <button class="btn" id="magnetMode">자석 모드</button>
+        <button class="btn" id="orbitMode">궤도 모드</button>
+        <button class="btn" id="waveMode">웨이브 모드</button>
+        <button class="btn" id="fadeMode">페이드 모드</button>
+      </div>
+    </aside>
+  </div>
+<script>
+function updateScale(){
+  const w=document.documentElement.clientWidth;
+  const h=document.documentElement.clientHeight;
+  const scale=Math.min(1,Math.max(0.45,Math.min(w/1200,h/800)));
+  document.documentElement.style.setProperty('--scale',scale);
+  document.documentElement.style.fontSize=(16*scale)+'px';
+}
+updateScale(); new ResizeObserver(updateScale).observe(document.documentElement);
+
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let DPR=Math.min(window.devicePixelRatio||1,2);
+let particles=[];
+let gravity=0.12;
+let colorMode=0;
+let slow=false;
+let spinMode=false;
+let bounceMode=false;
+let magnetMode=false;
+let orbitMode=false;
+let waveMode=false;
+let fadeMode=false;
+let fadeAlpha=1;
+
+function resizeCanvas(){
+  const rect=canvas.getBoundingClientRect();
+  canvas.width=rect.width*DPR;
+  canvas.height=rect.height*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+
+function spawn(n=20){
+  const rect=canvas.getBoundingClientRect();
+  for(let i=0;i<n;i++) particles.push({
+    x:Math.random()*rect.width,
+    y:Math.random()*rect.height/3,
+    r:Math.random()*12+6,
+    vx:(Math.random()-0.5)*2,
+    vy:(Math.random()-0.5)*1.5,
+    hue:Math.random()*360,
+    angle:Math.random()*Math.PI*2,
+    waveOffset: Math.random()*Math.PI*2
+  })
+}
+
+function interact(x,y,force=1.6){
+  for(let i=0;i<6;i++) particles.push({
+    x: x+(Math.random()-0.5)*30,
+    y: y+(Math.random()-0.5)*30,
+    r: Math.random()*14+6,
+    vx:(Math.random()-0.5)*8*force,
+    vy:(Math.random()-1.5)*6*force,
+    hue: Math.random()*360,
+    angle:Math.random()*Math.PI*2,
+    waveOffset: Math.random()*Math.PI*2
+  });
+}
+
+let isDown=false;
+canvas.addEventListener('pointerdown',e=>{isDown=true; const rect=canvas.getBoundingClientRect(); interact(e.clientX-rect.left,e.clientY-rect.top,2);});
+canvas.addEventListener('pointermove',e=>{if(!isDown) return; const rect=canvas.getBoundingClientRect(); interact(e.clientX-rect.left,e.clientY-rect.top,1.2);});
+window.addEventListener('pointerup',()=>isDown=false);
+
+function update(dt){
+  if(slow) dt*=0.3;
+  const w=canvas.width/DPR, h=canvas.height/DPR;
+  const cx=w/2, cy=h/2;
+
+  // 점진적 페이드 처리
+  fadeAlpha += fadeMode ? (0.3 - fadeAlpha) * 0.05 : (1 - fadeAlpha) * 0.05;
+
+  for(let p of particles){
+    p.vy+=gravity*dt*0.05;
+    p.x+=p.vx*dt*0.05;
+    p.y+=p.vy*dt*0.05;
+
+    if(p.y+p.r>h){
+      p.y=h-p.r;
+      p.vy*=-0.6;
+      if(bounceMode) p.vy*=-1.5;
+    }
+    if(p.x-p.r<0||p.x+p.r>w) p.vx*=-1;
+
+    if(spinMode){
+      let dx=p.x-cx, dy=p.y-cy;
+      let angle=0.002*dt;
+      let nx=dx*Math.cos(angle)-dy*Math.sin(angle);
+      let ny=dx*Math.sin(angle)+dy*Math.cos(angle);
+      p.x=cx+nx; p.y=cy+ny;
+    }
+
+    if(magnetMode){
+      let dx=cx-p.x, dy=cy-p.y;
+      p.vx += dx*0.0005*dt;
+      p.vy += dy*0.0005*dt;
+    }
+
+    if(orbitMode){
+      let dx=p.x-cx, dy=p.y-cy;
+      let dist=Math.sqrt(dx*dx+dy*dy);
+      let targetDist=150;
+      let angle=Math.atan2(dy,dx)+0.002*dt;
+      let diff=targetDist-dist;
+      p.x=cx+Math.cos(angle)*(dist+diff*0.05);
+      p.y=cy+Math.sin(angle)*(dist+diff*0.05);
+    }
+
+    if(waveMode){
+      p.y += Math.sin(performance.now()*0.003 + p.waveOffset)*0.5;
+    }
+  }
+}
+
+function draw(){
+  const w=canvas.width/DPR, h=canvas.height/DPR;
+  ctx.clearRect(0,0,w,h);
+  for(let p of particles){
+    ctx.beginPath();
+    ctx.fillStyle=`hsla(${p.hue},90%,60%,${fadeAlpha})`;
+    ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+
+let last=performance.now();
+function loop(now){
+  let dt=Math.min(40,now-last);
+  update(dt); draw(); last=now;
+  requestAnimationFrame(loop);
+}
+
+function init(){resizeCanvas(); particles=[]; spawn(30); last=performance.now(); requestAnimationFrame(loop);}
+window.addEventListener('load',init);
+window.addEventListener('resize',resizeCanvas);
+
+function burstEffect(){
+  const rect=canvas.getBoundingClientRect();
+  for(let i=0;i<40;i++) particles.push({ x:rect.width/2, y:rect.height/2, r:Math.random()*10+5, vx:(Math.random()-0.5)*10, vy:(Math.random()-0.5)*10, hue:Math.random()*360, angle:Math.random()*Math.PI*2, waveOffset: Math.random()*Math.PI*2 });
+}
+
+function megaBurst(){
+  const rect=canvas.getBoundingClientRect();
+  for(let i=0;i<120;i++) particles.push({ x:rect.width/2, y:rect.height/2, r:Math.random()*12+6, vx:(Math.random()-0.5)*18, vy:(Math.random()-0.5)*18, hue:Math.random()*360, angle:Math.random()*Math.PI*2, waveOffset: Math.random()*Math.PI*2 });
+}
+
+// 버튼 이벤트
+document.getElementById('regen').onclick=()=>{particles=[]; spawn(30)};
+document.getElementById('toggleGravity').onclick=e=>{gravity=gravity?0:0.15; e.target.classList.toggle('primary')};
+document.getElementById('toggleColorMode').onclick=()=>{colorMode=1-colorMode};
+document.getElementById('burst').onclick=burstEffect;
+document.getElementById('megaBurst').onclick=megaBurst;
+document.getElementById('slowmo').onclick=e=>{slow=!slow; e.target.classList.toggle('primary')};
+document.getElementById('spinMode').onclick=e=>{spinMode=!spinMode; e.target.classList.toggle('primary');};
+document.getElementById('bounceMode').onclick=e=>{bounceMode=!bounceMode; e.target.classList.toggle('primary');};
+document.getElementById('magnetMode').onclick=e=>{magnetMode=!magnetMode; e.target.classList.toggle('primary');};
+document.getElementById('orbitMode').onclick=e=>{orbitMode=!orbitMode; e.target.classList.toggle('primary');};
+document.getElementById('waveMode').onclick=e=>{waveMode=!waveMode; e.target.classList.toggle('primary');};
+document.getElementById('fadeMode').onclick=e=>{fadeMode=!fadeMode; e.target.classList.toggle('primary');};
+</script>
+</body>
+</html>
